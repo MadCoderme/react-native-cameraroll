@@ -790,6 +790,60 @@ public class CameraRollModule extends ReactContextBaseJavaModule {
       }
   }
 
+  @ReactMethod
+    public void moveToMediaStore(String filePath, String fileName, Promise promise) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            promise.resolve(null);
+            return;
+        }
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Images.Media.DISPLAY_NAME, fileName);
+        values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg");
+
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DCIM + "/PlantNet");
+        values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+
+        ContentResolver resolver = getReactApplicationContext().getContentResolver();
+        Uri imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+
+        try {
+            OutputStream fos = resolver.openOutputStream(imageUri);
+            copy(new File(filePath), fos);
+            values.clear();
+            values.put(MediaStore.Images.Media.IS_PENDING, 0);
+            resolver.update(imageUri, values, null, null);
+            promise.resolve(getNameFromContentUri(getReactApplicationContext(), imageUri));
+        } catch (Exception e) {
+            e.printStackTrace();
+            promise.reject(e);
+        }
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.Q)
+    public static void copy(File src, OutputStream out) throws IOException {
+        try (InputStream in = new FileInputStream(src)) {
+            FileUtils.copy(in, out);
+        }
+    }
+
+    // From https://stackoverflow.com/a/64359655/1377145
+    public static String getNameFromContentUri(Context context, Uri contentUri){
+        ContentResolver contentResolver = context.getContentResolver();
+        Cursor cursor = contentResolver.query(contentUri, null, null, null, null);
+        cursor.moveToFirst();
+        String document_id = cursor.getString(0);
+        document_id = document_id.substring(document_id.lastIndexOf(":") + 1);
+        cursor.close();
+
+        cursor = contentResolver.query(
+            android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            null, MediaStore.Images.Media._ID + " = ? ", new String[]{document_id}, null);
+        cursor.moveToFirst();
+        String path = cursor.getString(cursor.getColumnIndex(MediaStore.Images.Media.DATA));
+        cursor.close();
+        return path;
+    }
+  
   /**
    * Delete a set of images.
    *
